@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>暮らしのケア記録</title>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ケア記録" />
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;background:#F8F4EE;}
+    #loading{display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:14px;color:#4E7A5E;font-size:15px;}
+    .spinner{width:38px;height:38px;border:3px solid #D8E4DC;border-top-color:#4E7A5E;border-radius:50%;animation:spin 0.8s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>🌱 暮らしのケア記録 読み込み中...</div>
+  </div>
+  <div id="root"></div>
+
+  <!-- React -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <script>
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDzTRsI-AZE4DN2ILROmb7oSkdbJYn6ZhU",
+  authDomain: "kurashi-care.firebaseapp.com",
+  projectId: "kurashi-care",
+  storageBucket: "kurashi-care.firebasestorage.app",
+  messagingSenderId: "293234386482",
+  appId: "1:293234386482:web:5e97c94b9d402dc6927e2b"
+};
+
+// Firebase初期化
+const firebaseApp = firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+  </script>
+
+  <script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+
+// ========== FIREBASE HELPERS ==========
+function useFirestore(collection) {
+  const [data, setData] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const unsubscribe = db.collection(collection)
+      .onSnapshot(snapshot => {
+        const items = snapshot.docs.map(doc => ({ ...doc.data(), _id: doc.id }));
+        setData(items);
+        setLoading(false);
+      }, err => {
+        console.error(err);
+        setLoading(false);
+      });
+    return () => unsubscribe();
+  }, [collection]);
+
+  return { data, loading };
+}
+
+async function saveDoc(collection, id, data) {
+  try {
+    await db.collection(collection).doc(String(id)).set(data, { merge: true });
+  } catch(e) { console.error('Save error:', e); }
+}
+
+async function addDoc(collection, data) {
+  try {
+    const ref = await db.collection(collection).add(data);
+    return ref.id;
+  } catch(e) { console.error('Add error:', e); return null; }
+}
+
+async function updateDoc(collection, id, data) {
+  try {
+    await db.collection(collection).doc(String(id)).update(data);
+  } catch(e) { console.error('Update error:', e); }
+}
+
+const { useState, useEffect } = React;
+
+
+
+const COLORS = {
+  sage:"#7A9E87", sageLight:"#A8C4B0", sageDark:"#4E7A5E",
+  cream:"#F8F4EE", warmWhite:"#FDFAF6", charcoal:"#2C3E35",
+  brown:"#6B4F3A", accent:"#D4845A", accentLight:"#F0C4A8",
+  muted:"#8A9E92", border:"#D8E4DC", red:"#C0504A",
+  gold:"#C49A1A", goldLight:"#FDF3D0",
+  blue:"#4A7FA8", blueLight:"#EEF6FF",
+  purple:"#7A5EA8", purpleLight:"#F3EFF9",
+  green:"#2E7D52", greenLight:"#E8F5EE",
+};
+
+const S = {
+  app:{ fontFamily:"'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif", background:COLORS.cream, minHeight:"100vh", color:COLORS.charcoal },
+  header:{ background:COLORS.sageDark, color:"white", padding:"0 14px", display:"flex", alignItems:"center", justifyContent:"space-between", height:52, boxShadow:"0 2px 8px rgba(0,0,0,0.15)" },
+  headerTitle:{ fontSize:16, fontWeight:700, letterSpacing:"0.03em" },
+  nav:{ background:"white", borderBottom:`1px solid ${COLORS.border}`, display:"flex", padding:"0 6px", overflowX:"auto" },
+  navBtn:(a)=>({ padding:"11px 10px", border:"none", background:"none", cursor:"pointer", fontSize:11, fontWeight:a?700:400, color:a?COLORS.sageDark:COLORS.muted, borderBottom:a?`2px solid ${COLORS.sageDark}`:"2px solid transparent", whiteSpace:"nowrap" }),
+  main:{ padding:"13px 12px", maxWidth:1200, margin:"0 auto" },
+  card:{ background:"white", borderRadius:12, padding:15, marginBottom:12, boxShadow:"0 1px 4px rgba(0,0,0,0.06)", border:`1px solid ${COLORS.border}` },
+  title:{ fontSize:13, fontWeight:700, color:COLORS.sageDark, marginBottom:10, display:"flex", alignItems:"center", gap:6 },
+  label:{ fontSize:11, color:COLORS.muted, marginBottom:3, display:"block" },
+  input:{ width:"100%", padding:"8px 10px", border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:13, background:COLORS.warmWhite, color:COLORS.charcoal, boxSizing:"border-box", outline:"none", fontFamily:"inherit" },
+  textarea:{ width:"100%", padding:"8px 10px", border:`1px solid ${COLORS.border}`, borderRadius:8, fontSize:13, background:COLORS.warmWhite, color:COLORS.charcoal, boxSizing:"border-box", resize:"vertical", minHeight:68, outline:"none", fontFamily:"inherit" },
+  row:{ display:"flex", gap:9, marginBottom:9 },
+  col:{ flex:1 },
+  btn:(v="primary")=>({ padding:"8px 15px", borderRadius:8, border:v==="outline"?`1px solid ${COLORS.sageDark}`:"none", cursor:"pointer", fontSize:12, fontWeight:600,
+    background:v==="primary"?COLORS.sageDark:v==="danger"?COLORS.red:v==="blue"?COLORS.blue:v==="purple"?COLORS.purple:v==="green"?COLORS.green:"white",
+    color:["primary","danger","blue","purple","green"].includes(v)?"white":COLORS.sageDark }),
+  tag:(c=COLORS.sageLight)=>({ display:"inline-block", background:c, color:"white", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:600 }),
+  divider:{ border:"none", borderTop:`1px solid ${COLORS.border}`, margin:"10px 0" },
+  badge:(c)=>({ background:c, color:"white", borderRadius:6, padding:"2px 6px", fontSize:10, fontWeight:700 }),
+  listItem:{ padding:"10px 0", borderBottom:`1px solid ${COLORS.border}` },
+  feeBox:{ background:COLORS.goldLight, border:"1px solid #E8C840", borderRadius:10, padding:"10px 13px", marginTop:9 },
+  feeTotal:{ fontSize:18, fontWeight:700, color:COLORS.gold, textAlign:"right" },
+  timerDisplay:{ fontSize:31, fontWeight:700, color:COLORS.sageDark, textAlign:"center", letterSpacing:"0.05em", padding:"12px 0 6px" },
+};
+
+// ========== CONSTANTS ==========
+const SERVICE_OPTIONS = [
+  {key:"indoor",label:"🏠 宅内敷地内支援"},
+  {key:"errands",label:"🛒 買物等代行"},
+  {key:"outdoor_nocar",label:"🚶 外出支援（車なし）"},
+  {key:"outdoor_car",label:"🚗 外出支援（車あり）"},
+  {key:"aroma",label:"🌸 アロマケア"},
+  {key:"other",label:"📌 その他"},
+];
+const svcMap = {indoor:"宅内",errands:"買物代行",outdoor_nocar:"外出(車なし)",outdoor_car:"外出(車あり)",aroma:"アロマ",other:"その他"};
+const serviceLabel = (svcs)=>(svcs||[]).map(s=>svcMap[s]||s).join("・");
+
+const PAYMENT_OPTIONS = [
+  {group:"銀行振替", key:"bank_transfer", label:"🏦 銀行振替"},
+  {group:"当日払い", key:"day_cash",      label:"💴 当日払い（現金）"},
+  {group:"当日払い", key:"day_paypay",    label:"📱 当日払い（PayPay）"},
+  {group:"月払い",   key:"monthly_cash",  label:"💴 月払い（現金）"},
+  {group:"monthly_paypay",  key:"monthly_paypay", label:"📱 月払い（PayPay）"},
+  {group:"月払い",   key:"monthly_bank",  label:"🏦 月払い（銀行振込）"},
+];
+const paymentLabel = (key)=>PAYMENT_OPTIONS.find(p=>p.key===key)?.label||key||"未設定";
+
+// ========== DEMO DATA ==========
+const INIT_STAFF_DEFAULT = [
+  {id:"admin1", name:"斎藤 志穂子", role:"admin", email:"admin@care.jp", password:"admin123", phone:"090-5555-6666", assignedClientIds:[1,2], shiftRequests:[], confirmedShifts:[]},
+  {id:"staff1", name:"佐藤 美咲",     role:"staff",  email:"misaki@care.jp",  password:"staff123", phone:"090-1111-2222", assignedClientIds:[1], shiftRequests:[], confirmedShifts:[]},
+  {id:"staff2", name:"鈴木 健太",     role:"staff",  email:"kenta@care.jp",   password:"staff456", phone:"090-3333-4444", assignedClientIds:[2], shiftRequests:[], confirmedShifts:[]},
+  {id:"fam1",   name:"山田 太郎",     role:"family", email:"yamada@care.jp",  password:"fam123",   phone:"", assignedClientIds:[], clientId:1, shiftRequests:[], confirmedShifts:[]},
+];
+
+const INIT_CLIENTS_DEFAULT = [
+  {id:1, name:"山田 花子", age:82, address:"東京都渋谷区〇〇1-2-3", diagnosis:"認知症（アルツハイマー型）、高血圧", emergency:"山田 太郎（長男） 090-1234-5678", life:"昭和17年生まれ。元教師。音楽が好きで、特に昭和歌謡を愛した。料理が得意で、近所に料理を振る舞うのが喜びだった。几帳面な性格。", notes:"大きな声を嫌がる。名前で呼ばれると安心する。", paymentMethod:"monthly_bank", records:[], schedules:[]},
+  {id:2, name:"田中 一郎", age:75, address:"東京都新宿区△△3-4-5", diagnosis:"パーキンソン病、糖尿病", emergency:"田中 恵子（妻） 090-9876-5432", life:"昭和24年生まれ。元大工。手先が器用で木工細工が趣味。地域の祭りを取り仕切っていた。プライドが高く人に頼ることが苦手。", notes:"「ありがとう」より「助かった」と言うタイプ。", paymentMethod:"day_cash", records:[], schedules:[]},
+];
+
+// ========== UTILS ==========
+// serviceMins: { indoor:30, errands:0, outdoor_nocar:60, outdoor_car:0, aroma:30, other:0 }
+function calcFee({services, serviceMins={}, entryTime, exitTime, carKm, otherItems=[]}){
+  if(!entryTime||!exitTime) return null;
+  const [eh,em]=entryTime.split(":").map(Number), [xh,xm]=exitTime.split(":").map(Number);
+  const totalMin=(xh*60+xm)-(eh*60+em);
+  if(totalMin<=0) return null;
+  let breakdown=[],total=0;
+
+  const hasI=services.includes("indoor"),hasE=services.includes("errands"),hasA=services.includes("aroma");
+  const hasNC=services.includes("outdoor_nocar"),hasC=services.includes("outdoor_car");
+
+  // 宅内系（宅内・買物・アロマ）→ 宅内+買物の合計分数で宅内料金
+  const indoorMin = (hasI?(parseInt(serviceMins.indoor)||0):0) + (hasE?(parseInt(serviceMins.errands)||0):0);
+  if(hasI||hasE){
+    const m=indoorMin||totalMin;
+    const fee=m<=30?1600:m<=60?2800:2800+Math.ceil((m-60)/15)*700;
+    const lbl=[hasI&&"宅内敷地内",hasE&&"買物等代行"].filter(Boolean).join("・");
+    breakdown.push({label:`${lbl}（${m}分）`,amount:fee}); total+=fee;
+  }
+
+  // アロマケア → 宅内料金に加算（15分ごと+1,000円）
+  if(hasA){
+    const m=parseInt(serviceMins.aroma)||0;
+    if(m>0){
+      const aromaFee=Math.ceil(m/15)*1000;
+      breakdown.push({label:`🌸 アロマケア（${m}分）`,amount:aromaFee}); total+=aromaFee;
+    } else {
+      breakdown.push({label:"🌸 アロマケア（分数未入力）",amount:0});
+    }
+  }
+
+  // 外出支援（車なし）
+  if(hasNC){
+    const m=parseInt(serviceMins.outdoor_nocar)||totalMin;
+    const fee=m<=60?3000:3000+Math.ceil((m-60)/15)*750;
+    breakdown.push({label:`外出支援・車なし（${m}分）`,amount:fee}); total+=fee;
+  }
+
+  // 外出支援（車あり）
+  if(hasC){
+    const m=parseInt(serviceMins.outdoor_car)||totalMin;
+    const fee=m<=60?3000:3000+Math.ceil((m-60)/15)*750;
+    breakdown.push({label:`外出支援・車あり（${m}分）`,amount:fee}); total+=fee;
+    const km=parseFloat(carKm)||0;
+    if(km>0){const cf=Math.round(km*30);breakdown.push({label:`車同乗 ${km}km×30円`,amount:cf});total+=cf;}
+  }
+
+  // その他（複数行）
+  (otherItems||[]).forEach((item,i)=>{
+    const amt=parseInt(item.fee)||0;
+    if(amt>0||item.note){
+      breakdown.push({label:`📌 ${item.note||"その他"+(i+1)}`,amount:amt}); total+=amt;
+    }
+  });
+
+  return {breakdown,total,totalMin};
+}
+const getDays=(y,m)=>new Date(y,m+1,0).getDate();
+const getFirst=(y,m)=>new Date(y,m,1).getDay();
+const toDS=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+const MNAMES=["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+const DNAMES=["日","月","火","水","木","金","土"];
+
+// ========== LOGIN ==========
+function LoginScreen({onLogin}){
+  const [email,setEmail]=useState(""), [password,setPassword]=useState(""), [err,setErr]=useState("");
+  const allAccounts=[...INIT_STAFF];
+  const handle=()=>{
+    const acc=allAccounts.find(a=>a.email===email&&a.password===password);
+    if(acc){setErr("");onLogin(acc);}else setErr("メールアドレスまたはパスワードが違います");
+  };
+  const roleColor={admin:COLORS.purple,staff:COLORS.sageDark,family:COLORS.accent};
+  const roleLabel={admin:"管理者",staff:"スタッフ",family:"ご家族"};
+  return(
+    <div style={{...S.app,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:"100%",maxWidth:360,padding:"0 18px"}}>
+        <div style={{textAlign:"center",marginBottom:26}}>
+          <div style={{fontSize:36,marginBottom:7}}>🌱</div>
+          <div style={{fontSize:21,fontWeight:700,color:COLORS.sageDark}}>暮らしのケア記録</div>
+          <div style={{fontSize:11,color:COLORS.muted,marginTop:3}}>スタッフ・管理者ログイン</div>
+        </div>
+        <div style={S.card}>
+          <div style={{marginBottom:10}}><label style={S.label}>メールアドレス</label><input style={S.input} type="email" placeholder="example@care.jp" value={email} onChange={e=>setEmail(e.target.value)}/></div>
+          <div style={{marginBottom:14}}><label style={S.label}>パスワード</label><input style={S.input} type="password" placeholder="パスワード" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/></div>
+          {err&&<div style={{fontSize:11,color:COLORS.red,marginBottom:9}}>{err}</div>}
+          <button style={{...S.btn("primary"),width:"100%",padding:"10px"}} onClick={handle}>ログイン</button>
+        </div>
+        <div style={{...S.card,background:COLORS.cream}}>
+          <div style={{fontSize:11,color:COLORS.muted,marginBottom:6,fontWeight:600}}>デモ用アカウント</div>
+          {INIT_STAFF.map(a=>(
+            <div key={a.id} style={{fontSize:11,color:COLORS.muted,marginBottom:3}}>
+              <span style={{...S.badge(roleColor[a.role]),marginRight:5}}>{roleLabel[a.role]}</span>
+              {a.email} / {a.password}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== FAMILY PORTAL ==========
+function FamilyPortal({currentUser,clients}){
+  const client=clients.find(c=>c.id===currentUser.clientId);
+  if(!client) return <div style={{padding:20,color:COLORS.muted,textAlign:"center"}}>紐付けられた利用者が見つかりません</div>;
+  const shared=client.records.filter(r=>r.familyShare);
+  const condColor={"良好":COLORS.sage,"普通":"#B0A875","やや不調":COLORS.accent,"不調":COLORS.red,"要注意":"#8B2FC9"};
+  return(
+    <div style={S.main}>
+      <div style={{...S.card,background:COLORS.sageDark,border:"none"}}>
+        <div style={{color:"white",fontSize:14,fontWeight:700,marginBottom:3}}>{client.name} さんの最近の様子</div>
+        <div style={{color:COLORS.sageLight,fontSize:11}}>ご家族向け共有ページ</div>
+      </div>
+      {shared.length===0?<div style={{...S.card,color:COLORS.muted,textAlign:"center",padding:26,fontSize:13}}>共有された記録はまだありません</div>:
+        shared.slice().reverse().map(r=>(
+          <div key={r.id} style={S.card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <span style={{fontWeight:700,fontSize:13}}>{r.date}</span>
+              <span style={S.tag(condColor[r.condition]||COLORS.muted)}>{r.condition}</span>
+            </div>
+            <div style={{fontSize:11,color:COLORS.muted,marginBottom:4}}>訪問：{r.entryTime}〜{r.exitTime||"—"}　担当：{r.staff}</div>
+            {r.services?.length>0&&<div style={{fontSize:11,color:COLORS.sageDark,fontWeight:600,marginBottom:3}}>{serviceLabel(r.services)}</div>}
+            {r.memo&&<div style={{fontSize:13,lineHeight:1.7,marginBottom:4}}>{r.memo}</div>}
+            <PhotoGrid photos={r.photos}/>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+// ========== TIMER ==========
+function Timer({clientName}){
+  const [running,setRunning]=useState(false),[seconds,setSeconds]=useState(0);
+  const [entryTime,setEntryTime]=useState(null),[exitTime,setExitTime]=useState(null);
+  const ref=useState(null);
+  const fmt=s=>{const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sc).padStart(2,"0")}`;};
+  const nowStr=()=>{const n=new Date();return`${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}`;};
+  return(
+    <div style={S.card}>
+      <div style={S.title}>⏱ 入退室タイマー　<span style={{fontWeight:400,color:COLORS.muted}}>{clientName}</span></div>
+      <div style={S.timerDisplay}>{fmt(seconds)}</div>
+      <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:10}}>
+        {!running&&seconds===0&&<button style={S.btn("primary")} onClick={()=>{setRunning(true);setEntryTime(nowStr());setSeconds(0);ref[1](setInterval(()=>setSeconds(s=>s+1),1000));}}>入室開始</button>}
+        {running&&<button style={S.btn("danger")} onClick={()=>{setRunning(false);setExitTime(nowStr());clearInterval(ref[0]);}}>退室</button>}
+        {!running&&seconds>0&&<button style={S.btn("outline")} onClick={()=>{setRunning(false);setSeconds(0);setEntryTime(null);setExitTime(null);clearInterval(ref[0]);}}>リセット</button>}
+      </div>
+      {(entryTime||exitTime)&&<div style={{display:"flex",justifyContent:"center",gap:16,fontSize:12,color:COLORS.muted}}>
+        {entryTime&&<span>入室 <strong style={{color:COLORS.charcoal}}>{entryTime}</strong></span>}
+        {exitTime&&<span>退室 <strong style={{color:COLORS.charcoal}}>{exitTime}</strong></span>}
+        {exitTime&&<span>時間 <strong style={{color:COLORS.sageDark}}>{fmt(seconds)}</strong></span>}
+      </div>}
+    </div>
+  );
+}
+
+// ========== PAYMENT SELECTOR ==========
+function PaymentSelector({value,onChange,name="pay"}){
+  const groups=["銀行振替","当日払い","月払い"];
+  return(
+    <div>
+      {groups.map(g=>(
+        <div key={g}>
+          <div style={{fontSize:10,color:COLORS.muted,marginBottom:3,marginTop:6}}>{g}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+            {PAYMENT_OPTIONS.filter(p=>p.group===g||p.key.startsWith(g==="当日払い"?"day":g==="月払い"?"monthly":"bank")).map(p=>{
+              const checked=value===p.key;
+              return(
+                <label key={p.key} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 9px",borderRadius:20,border:`1px solid ${checked?COLORS.sageDark:COLORS.border}`,background:checked?"#EBF4EE":COLORS.warmWhite,cursor:"pointer",fontSize:11}}>
+                  <input type="radio" name={name} checked={checked} onChange={()=>onChange(p.key)} style={{accentColor:COLORS.sageDark}}/>{p.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ========== RECORD FORM ==========
+function RecordForm({client,currentUser,staffList=[],onSave}){
+  const empty={
+    date:new Date().toISOString().slice(0,10),
+    staff:currentUser?.name||"",
+    entryTime:"",exitTime:"",
+    condition:"良好",
+    services:[],
+    serviceMins:{},
+    carKm:"",
+    otherItems:[{note:"",fee:""}],
+    memo:"",familyShare:false,
+    paymentMethod:client?.paymentMethod||"",
+    photos:[]
+  };
+  const [form,setForm]=useState(empty);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const toggleSvc=key=>setForm(f=>{
+    const checked=f.services.includes(key);
+    const services=checked?f.services.filter(s=>s!==key):[...f.services,key];
+    const serviceMins={...f.serviceMins};
+    if(checked) delete serviceMins[key];
+    return {...f,services,serviceMins};
+  });
+
+  const setSvcMin=(key,val)=>setForm(f=>({...f,serviceMins:{...f.serviceMins,[key]:val}}));
+
+  const setOtherItem=(i,field,val)=>setForm(f=>{
+    const items=[...f.otherItems];
+    items[i]={...items[i],[field]:val};
+    return {...f,otherItems:items};
+  });
+  const addOtherItem=()=>setForm(f=>({...f,otherItems:[...f.otherItems,{note:"",fee:""}]}));
+  const removeOtherItem=i=>setForm(f=>({...f,otherItems:f.otherItems.filter((_,idx)=>idx!==i)}));
+
+  const fee=calcFee(form);
+  const hasCar=form.services.includes("outdoor_car");
+  const hasOther=form.services.includes("other");
+  const hasAroma=form.services.includes("aroma");
+
+  // 分数入力が必要な支援内容
+  const minuteKeys=["indoor","errands","outdoor_nocar","outdoor_car","aroma"];
+  const activeMinuteServices=SERVICE_OPTIONS.filter(s=>minuteKeys.includes(s.key)&&form.services.includes(s.key));
+
+  return(
+    <div style={S.card}>
+      <div style={S.title}>📝 訪問記録を入力</div>
+      <div style={S.row}>
+        <div style={S.col}><label style={S.label}>訪問日</label><input style={S.input} type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></div>
+        <div style={S.col}><label style={S.label}>担当者名</label><input style={S.input} value={form.staff} onChange={e=>set("staff",e.target.value)}/></div>
+      </div>
+      <div style={S.row}>
+        <div style={S.col}><label style={S.label}>入室時刻 *</label><input style={S.input} type="time" value={form.entryTime} onChange={e=>set("entryTime",e.target.value)}/></div>
+        <div style={S.col}><label style={S.label}>退室時刻</label><input style={S.input} type="time" value={form.exitTime} onChange={e=>set("exitTime",e.target.value)}/></div>
+      </div>
+
+      <hr style={S.divider}/>
+      <div style={{...S.title,fontSize:11}}>支援内容（複数可）・各支援の時間を入力</div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+        {SERVICE_OPTIONS.map(({key,label})=>{
+          const checked=form.services.includes(key);
+          const needsMins=minuteKeys.includes(key);
+          return(
+            <div key={key}>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"7px 10px",borderRadius:checked&&needsMins?"8px 8px 0 0":8,background:checked?"#EBF4EE":COLORS.warmWhite,border:`1px solid ${checked?COLORS.sageDark:COLORS.border}`}}>
+                <input type="checkbox" checked={checked} onChange={()=>toggleSvc(key)} style={{width:15,height:15,accentColor:COLORS.sageDark}}/>
+                <span style={{fontSize:12,fontWeight:checked?600:400,color:checked?COLORS.sageDark:COLORS.charcoal,flex:1}}>{label}</span>
+                {key==="aroma"&&checked&&<span style={{fontSize:10,color:COLORS.accent}}>15分ごと+1,000円</span>}
+              </label>
+              {checked&&needsMins&&(
+                <div style={{padding:"8px 10px",background:"#D8EDE0",borderRadius:"0 0 8px 8px",border:`1px solid ${COLORS.sageDark}`,borderTop:"none",display:"flex",alignItems:"center",gap:8}}>
+                  <label style={{fontSize:11,color:COLORS.sageDark,whiteSpace:"nowrap"}}>時間（分）</label>
+                  <input
+                    style={{...S.input,width:80,background:"white"}}
+                    type="number" min="0" placeholder="例）30"
+                    value={form.serviceMins[key]||""}
+                    onChange={e=>setSvcMin(key,e.target.value)}
+                  />
+                  <span style={{fontSize:11,color:COLORS.muted}}>分</span>
+                  {key==="aroma"&&form.serviceMins[key]&&(
+                    <span style={{fontSize:11,color:COLORS.accent,fontWeight:600}}>
+                      +{(Math.ceil(parseInt(form.serviceMins[key])/15)*1000).toLocaleString()}円
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {hasCar&&(
+        <div style={{marginBottom:10,padding:"8px 10px",background:COLORS.blueLight,borderRadius:8,border:`1px solid #A8C8E8`}}>
+          <label style={{...S.label,color:COLORS.blue}}>🚗 車同乗距離（km）</label>
+          <input style={S.input} type="number" placeholder="例）5.2" value={form.carKm} onChange={e=>set("carKm",e.target.value)}/>
+          {form.carKm&&<div style={{fontSize:11,color:COLORS.blue,marginTop:3}}>車代：{Math.round(parseFloat(form.carKm)*30).toLocaleString()}円</div>}
+        </div>
+      )}
+
+      {hasOther&&(
+        <div style={{marginBottom:10,padding:"8px 10px",background:COLORS.accentLight,borderRadius:8,border:`1px solid ${COLORS.accent}`}}>
+          <div style={{fontSize:11,fontWeight:600,color:COLORS.brown,marginBottom:8}}>📌 その他追加料金</div>
+          {form.otherItems.map((item,i)=>(
+            <div key={i} style={{display:"flex",gap:7,marginBottom:7,alignItems:"center"}}>
+              <div style={{flex:2}}><input style={S.input} placeholder="内容（例：交通費）" value={item.note} onChange={e=>setOtherItem(i,"note",e.target.value)}/></div>
+              <div style={{width:90}}><input style={S.input} type="number" placeholder="金額(円)" value={item.fee} onChange={e=>setOtherItem(i,"fee",e.target.value)}/></div>
+              {form.otherItems.length>1&&(
+                <button onClick={()=>removeOtherItem(i)} style={{background:"none",border:"none",color:COLORS.red,cursor:"pointer",fontSize:16,lineHeight:1}}>×</button>
+              )}
+            </div>
+          ))}
+          <button onClick={addOtherItem} style={{...S.btn("outline"),fontSize:11,padding:"4px 12px",borderColor:COLORS.accent,color:COLORS.accent}}>+ 追加</button>
+        </div>
+      )}
+
+      {fee&&(
+        <div style={S.feeBox}>
+          <div style={{fontSize:11,fontWeight:700,color:COLORS.gold,marginBottom:6}}>💴 料金内訳（自動計算）</div>
+          {fee.breakdown.map((b,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+              <span>{b.label}</span><span style={{fontWeight:600}}>{b.amount.toLocaleString()}円</span>
+            </div>
+          ))}
+          <hr style={{...S.divider,margin:"6px 0"}}/>
+          <div style={S.feeTotal}>合計　{fee.total.toLocaleString()}円</div>
+        </div>
+      )}
+
+      <hr style={S.divider}/>
+      <div style={{marginBottom:9}}>
+        <label style={S.label}>💳 支払い方法</label>
+        {currentUser?.role==="admin"
+          ? <PaymentSelector value={form.paymentMethod} onChange={v=>set("paymentMethod",v)} name="rec_pay"/>
+          : <div style={{padding:"9px 12px",background:COLORS.warmWhite,borderRadius:8,border:`1px solid ${COLORS.border}`,fontSize:13,color:COLORS.sageDark,fontWeight:600}}>
+              {paymentLabel(form.paymentMethod)||"未設定"}
+              <span style={{fontSize:10,color:COLORS.muted,fontWeight:400,marginLeft:8}}>※変更は管理者のみ</span>
+            </div>
+        }
+      </div>
+      <hr style={S.divider}/>
+      <div style={{marginBottom:8}}>
+        <label style={S.label}>その日の状態</label>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          {["良好","普通","やや不調","不調","要注意"].map(c=>(
+            <button key={c} onClick={()=>set("condition",c)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${form.condition===c?COLORS.sageDark:COLORS.border}`,background:form.condition===c?COLORS.sageDark:"white",color:form.condition===c?"white":COLORS.muted,cursor:"pointer",fontSize:11,fontWeight:form.condition===c?700:400}}>{c}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{marginBottom:10}}><label style={S.label}>メモ・様子</label><textarea style={S.textarea} placeholder="その日の様子、気になったこと、引き継ぎなど..." value={form.memo} onChange={e=>set("memo",e.target.value)}/></div>
+      {/* 写真アップロード */}
+      <div style={{marginBottom:12}}>
+        <label style={S.label}>📷 写真（複数可）</label>
+        <label style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:8,border:`1px dashed ${COLORS.sageDark}`,background:COLORS.warmWhite,cursor:"pointer",fontSize:12,color:COLORS.sageDark,fontWeight:600}}>
+          <span style={{fontSize:18}}>📷</span> 写真を追加する（最大3枚）
+          <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>{
+            const files=Array.from(e.target.files);
+            files.forEach(file=>{
+              const reader=new FileReader();
+              reader.onload=ev=>setForm(f=>{
+                if((f.photos||[]).length>=3){alert("写真は3枚までです");return f;}
+                return {...f,photos:[...(f.photos||[]),{id:Date.now()+Math.random(),dataUrl:ev.target.result,name:file.name}]};
+              });
+              reader.readAsDataURL(file);
+            });
+            e.target.value="";
+          }}/>
+        </label>
+        {form.photos?.length>0&&(
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
+            {form.photos.map((p,i)=>(
+              <div key={p.id} style={{position:"relative",width:80,height:80}}>
+                <img src={p.dataUrl} alt={p.name} style={{width:80,height:80,objectFit:"cover",borderRadius:8,border:`1px solid ${COLORS.border}`}}/>
+                <button onClick={()=>setForm(f=>({...f,photos:f.photos.filter((_,idx)=>idx!==i)}))}
+                  style={{position:"absolute",top:-6,right:-6,width:20,height:20,borderRadius:"50%",border:"none",background:COLORS.red,color:"white",cursor:"pointer",fontSize:12,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12}}>
+        <input type="checkbox" id="fShare" checked={form.familyShare} onChange={e=>set("familyShare",e.target.checked)} style={{width:14,height:14,accentColor:COLORS.sageDark}}/>
+        <label htmlFor="fShare" style={{fontSize:11,cursor:"pointer"}}>ご家族にも共有する（写真も共有されます）</label>
+      </div>
+      <button style={S.btn("primary")} onClick={()=>{
+        if(!form.staff||!form.entryTime){alert("担当者名と入室時刻は必須です");return;}
+        onSave({...form,id:Date.now(),fee});
+        setForm({...empty,date:new Date().toISOString().slice(0,10)});
+      }}>記録を保存</button>
+    </div>
+  );
+}
+
+// ========== PHOTO GRID ==========
+function PhotoGrid({photos,compact}){
+  const [enlarged,setEnlarged]=useState(null);
+  if(!photos||photos.length===0) return null;
+  return(
+    <>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+        {photos.map((p,i)=>(
+          <img key={p.id||i} src={p.dataUrl} alt="" onClick={()=>setEnlarged(p)}
+            style={{width:compact?56:72,height:compact?56:72,objectFit:"cover",borderRadius:7,border:`1px solid ${COLORS.border}`,cursor:"pointer"}}/>
+        ))}
+      </div>
+      {enlarged&&(
+        <div onClick={()=>setEnlarged(null)} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <img src={enlarged.dataUrl} alt="" style={{maxWidth:"95vw",maxHeight:"90vh",objectFit:"contain",borderRadius:10}}/>
+          <button onClick={()=>setEnlarged(null)} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.2)",border:"none",color:"white",fontSize:24,borderRadius:"50%",width:36,height:36,cursor:"pointer"}}>×</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ========== RECORD LIST ==========
+function RecordList({records}){
+  if(records.length===0) return <div style={{...S.card,color:COLORS.muted,textAlign:"center",fontSize:13,padding:24}}>まだ記録がありません</div>;
+  const condColor={"良好":"#7A9E87","普通":"#B0A875","やや不調":"#C4885A","不調":"#C0504A","要注意":"#8B2FC9"};
+  return(
+    <div style={S.card}>
+      <div style={S.title}>📋 訪問記録一覧</div>
+      {records.slice().reverse().map(r=>(
+        <div key={r.id} style={S.listItem}>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,fontWeight:700}}>{r.date}</span>
+            <span style={S.badge(condColor[r.condition]||COLORS.muted)}>{r.condition}</span>
+            {r.familyShare&&<span style={S.badge(COLORS.accent)}>家族共有</span>}
+          </div>
+          <div style={{fontSize:11,color:COLORS.muted,marginBottom:2}}>担当：{r.staff}　{r.entryTime}〜{r.exitTime||"—"}</div>
+          {r.services?.length>0&&<div style={{fontSize:11,color:COLORS.sageDark,fontWeight:600,marginBottom:2}}>{serviceLabel(r.services)}{r.carKm?`　🚗 ${r.carKm}km`:""}</div>}
+          {r.paymentMethod&&<div style={{fontSize:10,color:COLORS.muted,marginBottom:2}}>{paymentLabel(r.paymentMethod)}</div>}
+          {r.fee&&<div style={{fontSize:12,color:COLORS.gold,fontWeight:700,marginBottom:2}}>💴 {r.fee.total.toLocaleString()}円</div>}
+          {r.memo&&<div style={{fontSize:12,color:COLORS.charcoal,lineHeight:1.6}}>{r.memo}</div>}
+          <PhotoGrid photos={r.photos} compact={true}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ========== ASSESSMENT ==========
+function AssessmentView({client, onUpdate, isPC, currentUser}){
+  const [editing,setEditing]=useState(false);
+  const [form,setForm]=useState({
+    name:client.name||"", age:client.age||"", address:client.address||"",
+    diagnosis:client.diagnosis||"", emergency:client.emergency||"",
+    life:client.life||"", notes:client.notes||"",
+    paymentMethod:client.paymentMethod||""
+  });
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
+  const handleSave=()=>{
+    onUpdate&&onUpdate({...client,...form,age:Number(form.age)});
+    setEditing(false);
+  };
+
+  if(editing){
+    return(
+      <div style={isPC?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}:{}}>
+        <div style={S.card}>
+          <div style={{...S.title,justifyContent:"space-between"}}>
+            <span>🌿 その人を知る</span>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={handleSave} style={{...S.btn("primary"),fontSize:11,padding:"4px 12px"}}>保存</button>
+              <button onClick={()=>setEditing(false)} style={{...S.btn("outline"),fontSize:11,padding:"4px 10px"}}>キャンセル</button>
+            </div>
+          </div>
+          <div style={{marginBottom:10}}>
+            <label style={S.label}>生きてきた過程・人となり</label>
+            <textarea style={{...S.textarea,minHeight:isPC?160:100,fontSize:isPC?14:13}} value={form.life} onChange={e=>set("life",e.target.value)} placeholder="生まれや育ち、仕事、趣味、大切にしてきたこと、性格など..."/>
+          </div>
+          <div>
+            <label style={S.label}>関わる際のポイント・注意点</label>
+            <textarea style={{...S.textarea,minHeight:isPC?120:80,fontSize:isPC?14:13}} value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="接し方のコツ、好きなこと、避けたほうがよいことなど..."/>
+          </div>
+        </div>
+        <div style={S.card}>
+          <div style={S.title}>🏥 基本情報</div>
+          <div style={S.row}>
+            <div style={S.col}><label style={S.label}>氏名</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)}/></div>
+            <div style={{width:70}}><label style={S.label}>年齢</label><input style={S.input} value={form.age} onChange={e=>set("age",e.target.value)}/></div>
+          </div>
+          <div style={{marginBottom:8}}><label style={S.label}>住所</label><input style={S.input} value={form.address} onChange={e=>set("address",e.target.value)}/></div>
+          <div style={{marginBottom:8}}><label style={S.label}>既往歴・診断名</label><input style={S.input} value={form.diagnosis} onChange={e=>set("diagnosis",e.target.value)}/></div>
+          <div style={{marginBottom:8}}><label style={S.label}>緊急連絡先</label><input style={S.input} value={form.emergency} onChange={e=>set("emergency",e.target.value)}/></div>
+          <div style={{marginBottom:8}}>
+            <label style={S.label}>お支払い方法</label>
+            {currentUser?.role==="admin"
+              ? <PaymentSelector value={form.paymentMethod} onChange={v=>set("paymentMethod",v)} name="assess_pay"/>
+              : <div style={{padding:"9px 12px",background:COLORS.warmWhite,borderRadius:8,border:`1px solid ${COLORS.border}`,fontSize:13,color:COLORS.sageDark,fontWeight:600}}>
+                  {paymentLabel(form.paymentMethod)||"未設定"}
+                  <span style={{fontSize:10,color:COLORS.muted,fontWeight:400,marginLeft:8}}>※変更は管理者のみ</span>
+                </div>
+            }
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 表示モード
+  return(
+    <div style={isPC?{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}:{}}>
+      <div style={S.card}>
+        <div style={{...S.title,justifyContent:"space-between"}}>
+          <span>🌿 その人を知る</span>
+          <button onClick={()=>setEditing(true)} style={{...S.btn("outline"),fontSize:11,padding:"4px 12px"}}>✏️ 編集</button>
+        </div>
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:isPC?12:10,color:COLORS.muted,marginBottom:3}}>生きてきた過程・人となり</div>
+          <div style={{fontSize:isPC?14:13,lineHeight:1.9,background:COLORS.cream,borderRadius:8,padding:isPC?14:10}}>{client.life||"未入力"}</div>
+        </div>
+        <div>
+          <div style={{fontSize:isPC?12:10,color:COLORS.muted,marginBottom:3}}>関わる際のポイント</div>
+          <div style={{fontSize:isPC?14:13,lineHeight:1.9,background:COLORS.accentLight,borderRadius:8,padding:isPC?14:10}}>{client.notes||"未入力"}</div>
+        </div>
+      </div>
+      <div style={S.card}>
+        <div style={S.title}>🏥 基本情報</div>
+        <div style={S.row}>
+          <div style={S.col}><label style={S.label}>氏名</label><div style={{fontSize:isPC?15:14,fontWeight:700}}>{client.name}</div></div>
+          <div style={S.col}><label style={S.label}>年齢</label><div style={{fontSize:isPC?15:14}}>{client.age}歳</div></div>
+        </div>
+        <hr style={S.divider}/>
+        <div style={{marginBottom:6}}><label style={S.label}>住所</label><div style={{fontSize:isPC?14:13}}>{client.address}</div></div>
+        <div style={{marginBottom:6}}><label style={S.label}>既往歴・診断名</label><div style={{fontSize:isPC?14:13}}>{client.diagnosis}</div></div>
+        <div style={{marginBottom:6}}><label style={S.label}>緊急連絡先</label><div style={{fontSize:isPC?14:13}}>{client.emergency}</div></div>
+        <div>
+          <label style={S.label}>お支払い方法（登録済み）</label>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{fontSize:isPC?14:13,color:COLORS.sageDark,fontWeight:600}}>{paymentLabel(client.paymentMethod)||"未設定"}</div>
+            {currentUser?.role==="admin"&&(
+              <button onClick={()=>setEditing(true)} style={{fontSize:10,color:COLORS.blue,background:"none",border:`1px solid ${COLORS.blue}`,borderRadius:10,padding:"2px 8px",cursor:"pointer"}}>変更</button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== CALENDAR ==========
+function CalendarView({allSchedules,onDayClick}){
+  const today=new Date();
+  const [vY,setVY]=useState(today.getFullYear()),[vM,setVM]=useState(today.getMonth()),[selDay,setSelDay]=useState(null);
+  const days=getDays(vY,vM),first=getFirst(vY,vM),todayStr=toDS(today.getFullYear(),today.getMonth(),today.getDate());
+  const prev=()=>{if(vM===0){setVY(y=>y-1);setVM(11);}else setVM(m=>m-1);setSelDay(null);};
+  const next=()=>{if(vM===11){setVY(y=>y+1);setVM(0);}else setVM(m=>m+1);setSelDay(null);};
+  const byDate={};
+  allSchedules.forEach(s=>{if(!byDate[s.date])byDate[s.date]=[];byDate[s.date].push(s);});
+  const selDateStr=selDay?toDS(vY,vM,selDay):null;
+  const selScheds=selDateStr?(byDate[selDateStr]||[]):[];
+  return(
+    <div>
+      <div style={S.card}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}>
+          <button onClick={prev} style={{...S.btn("outline"),padding:"4px 11px"}}>‹</button>
+          <span style={{fontSize:14,fontWeight:700}}>{vY}年 {MNAMES[vM]}</span>
+          <button onClick={next} style={{...S.btn("outline"),padding:"4px 11px"}}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3}}>
+          {DNAMES.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,color:i===0?COLORS.red:i===6?COLORS.blue:COLORS.muted,padding:"2px 0"}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+          {Array(first).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+          {Array(days).fill(null).map((_,i)=>{
+            const day=i+1,ds=toDS(vY,vM,day),sch=byDate[ds]||[];
+            const isT=ds===todayStr,isSel=selDay===day,dow=(first+i)%7;
+            return(
+              <div key={day} onClick={()=>setSelDay(isSel?null:day)} style={{minHeight:40,borderRadius:7,padding:"3px 2px",cursor:"pointer",background:isSel?COLORS.sageDark:isT?"#EBF4EE":"transparent",border:isT&&!isSel?`1px solid ${COLORS.sageDark}`:"1px solid transparent"}}>
+                <div style={{fontSize:11,fontWeight:(isT||isSel)?700:400,color:isSel?"white":dow===0?COLORS.red:dow===6?COLORS.blue:COLORS.charcoal,textAlign:"center",marginBottom:2}}>{day}</div>
+                {sch.slice(0,2).map((s,si)=><div key={si} style={{fontSize:8,background:isSel?"rgba(255,255,255,0.25)":COLORS.sageLight,color:"white",borderRadius:3,padding:"1px 3px",marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.startTime} {s.clientName}</div>)}
+                {sch.length>2&&<div style={{fontSize:8,color:isSel?"rgba(255,255,255,0.7)":COLORS.muted,textAlign:"center"}}>+{sch.length-2}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {selDateStr&&(
+        <div style={S.card}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
+            <div style={S.title}>📅 {vY}年{MNAMES[vM]}{selDay}日</div>
+            <button style={{...S.btn("blue"),fontSize:11,padding:"4px 10px"}} onClick={()=>onDayClick(selDateStr)}>+ 予定追加</button>
+          </div>
+          {selScheds.length===0?<div style={{color:COLORS.muted,fontSize:12,textAlign:"center",padding:"9px 0"}}>予定はありません</div>:
+            selScheds.sort((a,b)=>a.startTime>b.startTime?1:-1).map(s=>(
+              <div key={s.id} style={S.listItem}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                  <span style={{fontSize:12,fontWeight:700,color:COLORS.blue}}>{s.startTime}{s.endTime?`〜${s.endTime}`:""}</span>
+                  <span style={{fontSize:13,fontWeight:700}}>{s.clientName}</span>
+                  <span style={{...S.badge(s.confirmed?COLORS.green:COLORS.gold)}}>{s.confirmed?"確定":"未確定"}</span>
+                </div>
+                {s.staff&&<div style={{fontSize:11,color:COLORS.muted}}>担当: {s.staff}</div>}
+                {s.services?.length>0&&<div style={{fontSize:11,color:COLORS.sageDark,fontWeight:600}}>{serviceLabel(s.services)}</div>}
+              </div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========== SCHEDULE MODAL ==========
+function ScheduleModal({clients,defaultDate,currentUser,staffList,onSave,onClose}){
+  const [form,setForm]=useState({date:defaultDate||new Date().toISOString().slice(0,10),startTime:"",endTime:"",clientId:clients[0]?.id||"",staff:currentUser?.name||"",services:[],note:""});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const toggleSvc=key=>setForm(f=>({...f,services:f.services.includes(key)?f.services.filter(s=>s!==key):[...f.services,key]}));
+  const selClient=clients.find(c=>c.id===parseInt(form.clientId));
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.4)",zIndex:100,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div style={{background:"white",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:680,maxHeight:"85vh",overflowY:"auto",padding:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:13}}>
+          <div style={{fontSize:14,fontWeight:700,color:COLORS.sageDark}}>📅 支援予定を登録</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:COLORS.muted}}>×</button>
+        </div>
+        <div style={S.row}>
+          <div style={S.col}><label style={S.label}>日付</label><input style={S.input} type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></div>
+        </div>
+        <div style={S.row}>
+          <div style={S.col}><label style={S.label}>開始時刻 *</label><input style={S.input} type="time" value={form.startTime} onChange={e=>set("startTime",e.target.value)}/></div>
+          <div style={S.col}><label style={S.label}>終了（予定）</label><input style={S.input} type="time" value={form.endTime} onChange={e=>set("endTime",e.target.value)}/></div>
+        </div>
+        <div style={{marginBottom:8}}><label style={S.label}>利用者 *</label><select style={S.input} value={form.clientId} onChange={e=>set("clientId",e.target.value)}>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div style={{marginBottom:8}}><label style={S.label}>担当スタッフ</label>
+          <select style={S.input} value={form.staff} onChange={e=>set("staff",e.target.value)}>
+            <option value="">選択してください</option>
+            {staffList.filter(s=>s.role!=="family").map(s=><option key={s.id} value={s.name}>{s.name}（{s.role==="admin"?"管理者":"スタッフ"}）</option>)}
+          </select>
+        </div>
+        <div style={{marginBottom:8}}>
+          <label style={S.label}>支援内容（複数可）</label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+            {SERVICE_OPTIONS.map(({key,label})=>{
+              const checked=form.services.includes(key);
+              return <label key={key} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:20,border:`1px solid ${checked?COLORS.sageDark:COLORS.border}`,background:checked?"#EBF4EE":COLORS.warmWhite,cursor:"pointer",fontSize:11}}><input type="checkbox" checked={checked} onChange={()=>toggleSvc(key)} style={{accentColor:COLORS.sageDark}}/>{label}</label>;
+            })}
+          </div>
+        </div>
+        <div style={{marginBottom:13}}><label style={S.label}>メモ</label><textarea style={{...S.textarea,minHeight:46}} placeholder="持ち物、注意事項など..." value={form.note} onChange={e=>set("note",e.target.value)}/></div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={S.btn("primary")} onClick={()=>{if(!form.startTime||!form.clientId){alert("利用者と開始時刻は必須です");return;}onSave({...form,id:Date.now(),clientId:parseInt(form.clientId),clientName:selClient?.name||"",confirmed:false});}}>予定を登録</button>
+          <button style={S.btn("outline")} onClick={onClose}>キャンセル</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== CLIENT SCHEDULE TAB ==========
+function ClientScheduleView({client,allSchedules,currentUser,onAddSchedule,onConfirmSchedule}){
+  const my=allSchedules.filter(s=>s.clientId===client.id);
+  const today=new Date().toISOString().slice(0,10);
+  const upcoming=my.filter(s=>s.date>=today).sort((a,b)=>a.date>b.date?1:a.startTime>b.startTime?1:-1);
+  const past=my.filter(s=>s.date<today).sort((a,b)=>a.date<b.date?1:-1);
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:9}}>
+        <button style={{...S.btn("blue"),fontSize:11,padding:"6px 12px"}} onClick={()=>onAddSchedule(null)}>+ 予定を追加</button>
+      </div>
+      <div style={S.card}>
+        <div style={S.title}>📅 今後の予定</div>
+        {upcoming.length===0?<div style={{color:COLORS.muted,fontSize:12,textAlign:"center",padding:"8px 0"}}>予定はありません</div>:
+          upcoming.map(s=>(
+            <div key={s.id} style={{...S.listItem,display:"flex",gap:8,alignItems:"flex-start"}}>
+              <div style={{minWidth:58,textAlign:"center",background:COLORS.blueLight,borderRadius:7,padding:"4px 3px"}}>
+                <div style={{fontSize:10,color:COLORS.blue}}>{s.date.slice(5).replace("-","/")}</div>
+                <div style={{fontSize:11,fontWeight:700,color:COLORS.blue}}>{s.startTime}</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
+                  <span style={S.badge(s.confirmed?COLORS.green:COLORS.gold)}>{s.confirmed?"✓ 確定":"未確定"}</span>
+                  {s.staff&&<span style={{fontSize:11,color:COLORS.muted}}>担当: {s.staff}</span>}
+                </div>
+                {s.services?.length>0&&<div style={{fontSize:11,color:COLORS.sageDark,fontWeight:600}}>{serviceLabel(s.services)}</div>}
+                {s.endTime&&<div style={{fontSize:10,color:COLORS.muted}}>〜{s.endTime}</div>}
+                {s.note&&<div style={{fontSize:11,color:COLORS.charcoal,marginTop:2}}>{s.note}</div>}
+              </div>
+              {currentUser.role==="admin"&&!s.confirmed&&(
+                <button onClick={()=>onConfirmSchedule(s.id)} style={{...S.btn("green"),fontSize:10,padding:"4px 9px",whiteSpace:"nowrap"}}>確定</button>
+              )}
+            </div>
+          ))
+        }
+      </div>
+      {past.length>0&&(
+        <div style={S.card}>
+          <div style={{...S.title,color:COLORS.muted}}>🕐 過去の予定</div>
+          {past.slice(0,5).map(s=>(
+            <div key={s.id} style={{...S.listItem,opacity:0.6,fontSize:11}}>{s.date.slice(5).replace("-","/")} {s.startTime}{s.endTime?`〜${s.endTime}`:""} {serviceLabel(s.services)}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ========== SHIFT REQUEST (STAFF) ==========
+// timeSlot: "all"=終日, "am"=午前, "pm"=午後, "custom"=時間指定
+const SLOT_OPTIONS=[
+  {key:"all",  label:"終日",   short:"終日", color:COLORS.sageDark},
+  {key:"am",   label:"午前 AM",short:"AM",   color:COLORS.blue},
+  {key:"pm",   label:"午後 PM",short:"PM",   color:COLORS.purple},
+  {key:"custom",label:"時間指定",short:"時間",color:COLORS.accent},
+];
+
+function shiftDisplayLabel(req){
+  if(req.type==="off") return "希望休";
+  if(req.timeSlot==="am") return "AM";
+  if(req.timeSlot==="pm") return "PM";
+  if(req.timeSlot==="custom") return `${req.startTime||""}〜${req.endTime||""}`;
+  return "終日";
+}
+
+function ShiftRequestView({currentUser,staffList,setStaffList}){
+  const me=staffList.find(s=>s.id===currentUser.id);
+  const today=new Date();
+  const [vY,setVY]=useState(today.getFullYear()),[vM,setVM]=useState(today.getMonth()),[sel,setSel]=useState(null);
+  const [pendingSlot,setPendingSlot]=useState("all");
+  const [customStart,setCustomStart]=useState("");
+  const [customEnd,setCustomEnd]=useState("");
+  const days=getDays(vY,vM),first=getFirst(vY,vM);
+  const myReqs=me?.shiftRequests||[];
+  const getReq=ds=>myReqs.find(r=>r.date===ds)||null;
+
+  const saveReq=(ds,type,timeSlot,startTime,endTime)=>{
+    const updated=[...myReqs.filter(r=>r.date!==ds),{date:ds,type,timeSlot,startTime,endTime}];
+    setStaffList(prev=>prev.map(s=>s.id===currentUser.id?{...s,shiftRequests:updated}:s));
+    saveDoc('staff', currentUser.id, { shiftRequests: updated });
+  };
+  const removeReq=ds=>{
+    setStaffList(prev=>prev.map(s=>s.id===currentUser.id?{...s,shiftRequests:myReqs.filter(r=>r.date!==ds)}:s));
+  };
+
+  const handleHope=()=>{
+    if(pendingSlot==="custom"&&(!customStart||!customEnd)){alert("開始・終了時刻を入力してください");return;}
+    saveReq(sel,"hope",pendingSlot,pendingSlot==="custom"?customStart:"",pendingSlot==="custom"?customEnd:"");
+    setSel(null); setPendingSlot("all"); setCustomStart(""); setCustomEnd("");
+  };
+  const handleOff=()=>{
+    saveReq(sel,"off","","","");
+    setSel(null);
+  };
+
+  const prev=()=>{if(vM===0){setVY(y=>y-1);setVM(11);}else setVM(m=>m-1); setSel(null);};
+  const next=()=>{if(vM===11){setVY(y=>y+1);setVM(0);}else setVM(m=>m+1); setSel(null);};
+  const myConfirmed=me?.confirmedShifts||[];
+
+  const reqColor=(req)=>{
+    if(!req) return null;
+    if(req.type==="off") return COLORS.red;
+    const slot=SLOT_OPTIONS.find(s=>s.key===req.timeSlot)||SLOT_OPTIONS[0];
+    return slot.color;
+  };
+
+  return(
+    <div style={S.main}>
+      {myConfirmed.length>0&&(
+        <div style={{...S.card,background:COLORS.greenLight,border:`1px solid ${COLORS.green}`}}>
+          <div style={{...S.title,color:COLORS.green}}>✅ 確定済みシフト</div>
+          {myConfirmed.sort((a,b)=>a.date>b.date?1:-1).map(s=>(
+            <div key={s.id} style={{...S.listItem,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <span style={{fontSize:13,fontWeight:700}}>{s.date.slice(5).replace("-","/")} {s.startTime}{s.endTime?`〜${s.endTime}`:""}</span>
+                <div style={{fontSize:11,color:COLORS.muted}}>{s.clientName} / {serviceLabel(s.services)}</div>
+              </div>
+              <span style={S.badge(COLORS.green)}>確定</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={S.card}>
+        <div style={S.title}>📅 勤務希望・希望休の登録</div>
+        <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",fontSize:11}}>
+          {SLOT_OPTIONS.map(s=><div key={s.key} style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:10,height:10,borderRadius:2,background:s.color}}/>{s.label}</div>)}
+          <div style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:10,height:10,borderRadius:2,background:COLORS.red}}/> 希望休</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}>
+          <button onClick={prev} style={{...S.btn("outline"),padding:"4px 11px"}}>‹</button>
+          <span style={{fontSize:14,fontWeight:700}}>{vY}年 {MNAMES[vM]}</span>
+          <button onClick={next} style={{...S.btn("outline"),padding:"4px 11px"}}>›</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3}}>
+          {DNAMES.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,color:i===0?COLORS.red:i===6?COLORS.blue:COLORS.muted}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+          {Array(first).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+          {Array(days).fill(null).map((_,i)=>{
+            const day=i+1,ds=toDS(vY,vM,day),req=getReq(ds),dow=(first+i)%7;
+            const bg=req?reqColor(req):sel===ds?"#EBF4EE":"transparent";
+            return(
+              <div key={day} onClick={()=>{setSel(sel===ds?null:ds);setPendingSlot("all");setCustomStart("");setCustomEnd("");}}
+                style={{minHeight:40,borderRadius:7,padding:"3px 2px",cursor:"pointer",background:bg,border:`1px solid ${sel===ds&&!req?COLORS.sageDark:"transparent"}`,textAlign:"center"}}>
+                <div style={{fontSize:11,fontWeight:req?700:400,color:req?"white":dow===0?COLORS.red:dow===6?COLORS.blue:COLORS.charcoal}}>{day}</div>
+                {req&&<div style={{fontSize:8,color:"rgba(255,255,255,0.95)",lineHeight:1.2}}>{shiftDisplayLabel(req)}</div>}
+              </div>
+            );
+          })}
+        </div>
+
+        {sel&&(
+          <div style={{marginTop:11,padding:"12px 13px",background:COLORS.cream,borderRadius:8}}>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:10}}>{sel.slice(5).replace("-","/")} の登録</div>
+
+            {/* 希望日の時間帯選択 */}
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:11,color:COLORS.muted,marginBottom:6}}>勤務希望 — 時間帯を選択</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {SLOT_OPTIONS.map(opt=>(
+                  <button key={opt.key} onClick={()=>setPendingSlot(opt.key)}
+                    style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${pendingSlot===opt.key?opt.color:COLORS.border}`,background:pendingSlot===opt.key?opt.color:"white",color:pendingSlot===opt.key?"white":COLORS.charcoal,cursor:"pointer",fontSize:11,fontWeight:pendingSlot===opt.key?700:400}}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {pendingSlot==="custom"&&(
+                <div style={{display:"flex",gap:8,marginTop:8,alignItems:"center"}}>
+                  <input style={{...S.input,width:90}} type="time" value={customStart} onChange={e=>setCustomStart(e.target.value)} placeholder="開始"/>
+                  <span style={{fontSize:12,color:COLORS.muted}}>〜</span>
+                  <input style={{...S.input,width:90}} type="time" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} placeholder="終了"/>
+                </div>
+              )}
+              <button onClick={handleHope} style={{...S.btn("primary"),fontSize:11,padding:"6px 16px",marginTop:8}}>希望日として登録</button>
+            </div>
+
+            <hr style={{...S.divider,margin:"10px 0"}}/>
+
+            {/* 希望休 */}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button onClick={handleOff} style={{...S.btn("danger"),fontSize:11,padding:"6px 14px"}}>希望休として登録</button>
+              {getReq(sel)&&<button onClick={()=>{removeReq(sel);setSel(null);}} style={{...S.btn("outline"),fontSize:11,padding:"5px 10px",color:COLORS.muted,borderColor:COLORS.border}}>登録を解除</button>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 登録済み一覧 */}
+      <div style={S.card}>
+        <div style={S.title}>📋 登録済み一覧</div>
+        {myReqs.length===0?<div style={{color:COLORS.muted,fontSize:13}}>まだ登録がありません</div>:
+          myReqs.sort((a,b)=>a.date>b.date?1:-1).map(r=>(
+            <div key={r.date} style={{...S.listItem,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <span style={{fontSize:13}}>{r.date.slice(5).replace("-","/")}</span>
+                {r.type==="hope"&&r.timeSlot==="custom"&&r.startTime&&(
+                  <span style={{fontSize:11,color:COLORS.muted,marginLeft:6}}>{r.startTime}〜{r.endTime}</span>
+                )}
+              </div>
+              <span style={S.badge(reqColor(r))}>{shiftDisplayLabel(r)}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+// ========== ADMIN: STAFF MANAGEMENT ==========
+function StaffManagement({staffList,setStaffList,clients,allSchedules,onConfirmSchedule}){
+  const [tab,setTab]=useState("shifts"); // shifts | list | assign
+  const today=new Date();
+  const [vY,setVY]=useState(today.getFullYear()),[vM,setVM]=useState(today.getMonth());
+  const days=getDays(vY,vM),first=getFirst(vY,vM);
+  const prev=()=>{if(vM===0){setVY(y=>y-1);setVM(11);}else setVM(m=>m-1);};
+  const next=()=>{if(vM===11){setVY(y=>y+1);setVM(0);}else setVM(m=>m+1);};
+
+  // 未確定スケジュール
+  const unconfirmed=allSchedules.filter(s=>!s.confirmed);
+
+  const getStaffForDate=ds=>staffList.map(s=>({...s,req:s.shiftRequests?.find(r=>r.date===ds)||null})).filter(s=>s.req);
+  const reqBg=(req)=>{
+    if(!req||req.type==="off") return COLORS.red;
+    const slot=["all","am","pm","custom"];
+    const colors=[COLORS.sageDark,COLORS.blue,COLORS.purple,COLORS.accent];
+    return colors[slot.indexOf(req.timeSlot)]||COLORS.sageDark;
+  };
+
+  return(
+    <div style={S.main}>
+      <div style={{display:"flex",gap:6,marginBottom:11,flexWrap:"wrap"}}>
+        {[["shifts","📅 シフト希望"],["confirm","✅ シフト確定"],["assign","🔗 担当設定"],["list","👤 スタッフ一覧"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{...S.btn(tab===k?"primary":"outline"),fontSize:11,padding:"5px 12px"}}>{l}</button>
+        ))}
+      </div>
+
+      {tab==="shifts"&&(
+        <div style={S.card}>
+          <div style={S.title}>📅 スタッフ希望一覧</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:11}}>
+            <button onClick={prev} style={{...S.btn("outline"),padding:"4px 11px"}}>‹</button>
+            <span style={{fontSize:14,fontWeight:700}}>{vY}年 {MNAMES[vM]}</span>
+            <button onClick={next} style={{...S.btn("outline"),padding:"4px 11px"}}>›</button>
+          </div>
+          <div style={{display:"flex",gap:7,marginBottom:9,fontSize:10,flexWrap:"wrap"}}>
+            <span><span style={{...S.badge(COLORS.sageDark),marginRight:3}}>●</span>終日</span>
+            <span><span style={{...S.badge(COLORS.blue),marginRight:3}}>●</span>AM</span>
+            <span><span style={{...S.badge(COLORS.purple),marginRight:3}}>●</span>PM</span>
+            <span><span style={{...S.badge(COLORS.accent),marginRight:3}}>●</span>時間指定</span>
+            <span><span style={{...S.badge(COLORS.red),marginRight:3}}>●</span>希望休</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:3}}>
+            {DNAMES.map((d,i)=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,color:i===0?COLORS.red:i===6?COLORS.blue:COLORS.muted}}>{d}</div>)}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+            {Array(first).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+            {Array(days).fill(null).map((_,i)=>{
+              const day=i+1,ds=toDS(vY,vM,day),sfd=getStaffForDate(ds),dow=(first+i)%7;
+              return(
+                <div key={day} style={{minHeight:52,borderRadius:7,padding:"3px 2px",background:COLORS.warmWhite,border:`1px solid ${COLORS.border}`}}>
+                  <div style={{fontSize:10,color:dow===0?COLORS.red:dow===6?COLORS.blue:COLORS.charcoal,textAlign:"center",marginBottom:2}}>{day}</div>
+                  {sfd.map(s=>{
+                    const bg=reqBg(s.req);
+                    const lbl=s.req.type==="off"?"休":s.req.timeSlot==="am"?"AM":s.req.timeSlot==="pm"?"PM":s.req.timeSlot==="custom"?"時間":"終日";
+                    return <div key={s.id} style={{fontSize:8,background:bg,color:"white",borderRadius:2,padding:"1px 3px",marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{lbl}:{s.name.split(" ")[0]}</div>;
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab==="confirm"&&(
+        <div style={S.card}>
+          <div style={S.title}>✅ シフト確定　<span style={{fontSize:11,fontWeight:400,color:COLORS.muted}}>未確定：{unconfirmed.length}件</span></div>
+          {unconfirmed.length===0?(
+            <div style={{color:COLORS.muted,fontSize:13,textAlign:"center",padding:"14px 0"}}>未確定の予定はありません</div>
+          ):unconfirmed.sort((a,b)=>a.date>b.date?1:a.startTime>b.startTime?1:-1).map(s=>(
+            <div key={s.id} style={{...S.listItem,display:"flex",alignItems:"flex-start",gap:8}}>
+              <div style={{minWidth:60,background:COLORS.goldLight,borderRadius:7,padding:"4px 3px",textAlign:"center"}}>
+                <div style={{fontSize:10,color:COLORS.gold}}>{s.date.slice(5).replace("-","/")}</div>
+                <div style={{fontSize:11,fontWeight:700,color:COLORS.gold}}>{s.startTime}</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{s.clientName}</div>
+                <div style={{fontSize:11,color:COLORS.muted,marginBottom:2}}>担当: {s.staff||"未設定"}　{s.endTime?`〜${s.endTime}`:""}</div>
+                {s.services?.length>0&&<div style={{fontSize:11,color:COLORS.sageDark,fontWeight:600}}>{serviceLabel(s.services)}</div>}
+                {s.note&&<div style={{fontSize:11,color:COLORS.muted,marginTop:1}}>{s.note}</div>}
+              </div>
+              <button onClick={()=>onConfirmSchedule(s.id,s.staff)} style={{...S.btn("green"),fontSize:10,padding:"5px 10px",whiteSpace:"nowrap"}}>確定する</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab==="assign"&&(
+        <div style={S.card}>
+          <div style={S.title}>🔗 担当利用者の設定</div>
+          {staffList.filter(s=>s.role!=="family").map(st=>(
+            <div key={st.id} style={{...S.listItem}}>
+              <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>{st.name}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {clients.map(c=>{
+                  const assigned=st.assignedClientIds?.includes(c.id);
+                  return(
+                    <label key={c.id} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:20,border:`1px solid ${assigned?COLORS.sageDark:COLORS.border}`,background:assigned?"#EBF4EE":COLORS.warmWhite,cursor:"pointer",fontSize:12}}>
+                      <input type="checkbox" checked={!!assigned} onChange={()=>{
+                        setStaffList(prev=>prev.map(s=>s.id===st.id?{...s,assignedClientIds:assigned?s.assignedClientIds.filter(id=>id!==c.id):[...(s.assignedClientIds||[]),c.id]}:s));
+                      }} style={{accentColor:COLORS.sageDark}}/>{c.name}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab==="list"&&(
+        <>
+          {staffList.filter(s=>s.role!=="family").map(s=>(
+            <div key={s.id} style={S.card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                <div style={{fontSize:14,fontWeight:700}}>{s.name}</div>
+                <span style={S.badge(s.role==="admin"?COLORS.purple:COLORS.sageDark)}>{s.role==="admin"?"管理者":"スタッフ"}</span>
+              </div>
+              <div style={{fontSize:11,color:COLORS.muted,marginBottom:3}}>{s.email}　{s.phone}</div>
+              <div style={{fontSize:11,color:COLORS.sageDark}}>
+                担当: {(s.assignedClientIds||[]).length===0?"未設定":clients.filter(c=>s.assignedClientIds.includes(c.id)).map(c=>c.name).join("、")}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ========== UPCOMING WIDGET ==========
+function UpcomingWidget({allSchedules}){
+  const today=new Date().toISOString().slice(0,10);
+  const upcoming=allSchedules.filter(s=>s.date>=today).sort((a,b)=>a.date>b.date?1:a.startTime>b.startTime?1:-1).slice(0,4);
+  if(upcoming.length===0) return null;
+  return(
+    <div style={S.card}>
+      <div style={S.title}>📅 直近の予定</div>
+      {upcoming.map(s=>(
+        <div key={s.id} style={{...S.listItem,display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{minWidth:54,background:COLORS.blueLight,borderRadius:7,padding:"4px 3px",textAlign:"center"}}>
+            <div style={{fontSize:10,color:COLORS.blue}}>{s.date.slice(5).replace("-","/")}</div>
+            <div style={{fontSize:11,fontWeight:700,color:COLORS.blue}}>{s.startTime}</div>
+          </div>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <span style={{fontSize:13,fontWeight:700}}>{s.clientName}</span>
+              <span style={S.badge(s.confirmed?COLORS.green:COLORS.gold)}>{s.confirmed?"確定":"未確定"}</span>
+            </div>
+            <div style={{fontSize:11,color:COLORS.sageDark}}>{serviceLabel(s.services)}</div>
+            {s.staff&&<div style={{fontSize:10,color:COLORS.muted}}>担当: {s.staff}</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ========== CLIENT CARD ==========
+function ClientCard({client,onClick,isPC}){
+  return(
+    <div style={{...S.card,cursor:"pointer"}} onClick={onClick}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style={{fontSize:isPC?16:14,fontWeight:700,marginBottom:3}}>{client.name}</div>
+          <div style={{fontSize:isPC?13:11,color:COLORS.muted}}>{client.age}歳　{client.address}</div>
+          <div style={{fontSize:isPC?12:11,color:COLORS.brown,marginTop:2}}>{client.diagnosis}</div>
+          {client.paymentMethod&&<div style={{fontSize:isPC?12:10,color:COLORS.sageDark,marginTop:3}}>{paymentLabel(client.paymentMethod)}</div>}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
+          <div style={S.tag(COLORS.sageLight)}>記録 {client.records.length}件</div>
+          {client.schedules?.length>0&&<div style={S.tag(COLORS.blue)}>予定 {client.schedules.length}件</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== MAIN APP ==========
+function App(){
+  const [currentUser,setCurrentUser]=useState(null);
+  const [isPC,setIsPC]=useState(window.innerWidth>=900);
+  useEffect(()=>{
+    const handler=()=>setIsPC(window.innerWidth>=900);
+    window.addEventListener("resize",handler);
+    return()=>window.removeEventListener("resize",handler);
+  },[]);
+  const [clients,setClients]=useState([]);
+  const [clientsLoaded,setClientsLoaded]=useState(false);
+  const { data: fbClients, loading: clientsLoading } = useFirestore('clients');
+  useEffect(()=>{
+    if(!clientsLoading){
+      if(fbClients.length>0){ setClients(fbClients); }
+      else if(!clientsLoaded){
+        // 初回のみサンプルデータを投入
+        INIT_CLIENTS_DEFAULT.forEach(c=>{ db.collection('clients').doc(String(c.id)).set(c); });
+        setClientsLoaded(true);
+      }
+    }
+  },[fbClients,clientsLoading]);
+  const [staffList,setStaffList]=useState([]);
+  const { data: fbStaff, loading: staffLoading } = useFirestore('staff');
+  useEffect(()=>{
+    if(!staffLoading){
+      if(fbStaff.length>0){ setStaffList(fbStaff); }
+      else {
+        INIT_STAFF_DEFAULT.filter(s=>s.role!=='family').forEach(s=>{ db.collection('staff').doc(s.id).set(s); });
+      }
+    }
+  },[fbStaff,staffLoading]);
+  const [allSchedules,setAllSchedules]=useState([]);
+  const { data: fbSchedules, loading: schedulesLoading } = useFirestore('schedules');
+  useEffect(()=>{ if(!schedulesLoading && fbSchedules.length>0) setAllSchedules(fbSchedules); },[fbSchedules,schedulesLoading]);
+  const [selectedId,setSelectedId]=useState(null);
+  const [clientTab,setClientTab]=useState("record");
+  const [topTab,setTopTab]=useState("clients");
+  const [showAddClient,setShowAddClient]=useState(false);
+  const [showSchedModal,setShowSchedModal]=useState(false);
+  const [schedDefaultDate,setSchedDefaultDate]=useState(null);
+  const [newClient,setNewClient]=useState({name:"",age:"",address:"",diagnosis:"",emergency:"",life:"",notes:"",paymentMethod:""});
+
+  if(!currentUser) return <LoginScreen onLogin={setCurrentUser}/>;
+  if(currentUser.role==="family") return(
+    <div style={S.app}>
+      <div style={S.header}>
+        <span style={S.headerTitle}>🌱 暮らしのケア記録</span>
+        <button onClick={()=>setCurrentUser(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",cursor:"pointer",fontSize:11}}>ログアウト</button>
+      </div>
+      <FamilyPortal currentUser={currentUser} clients={clients}/>
+    </div>
+  );
+
+  const selected=clients.find(c=>c.id===selectedId);
+
+  // スタッフの場合は担当利用者のみ
+  const visibleClients = currentUser.role==="admin"
+    ? clients
+    : clients.filter(c=>{
+        const me=staffList.find(s=>s.id===currentUser.id);
+        return (me?.assignedClientIds||[]).includes(c.id);
+      });
+
+  const handleSaveRecord=async record=>{
+    const updated = clients.map(c=>c.id===selectedId?{...c,records:[...(c.records||[]),record]}:c);
+    setClients(updated);
+    const client = updated.find(c=>c.id===selectedId);
+    if(client) await saveDoc('clients', selectedId, { records: client.records });
+  };
+  const handleUpdateClient=async updated=>{
+    setClients(prev=>prev.map(c=>c.id===updated.id?updated:c));
+    await saveDoc('clients', updated.id, updated);
+  };
+
+  const handleSaveSchedule=async schedule=>{
+    setAllSchedules(prev=>[...prev,schedule]);
+    const updated = clients.map(c=>c.id===schedule.clientId?{...c,schedules:[...(c.schedules||[]),schedule]}:c);
+    setClients(updated);
+    const client = updated.find(c=>c.id===schedule.clientId);
+    if(client) await saveDoc('clients', schedule.clientId, { schedules: client.schedules });
+    await addDoc('schedules', schedule);
+    setShowSchedModal(false);
+  };
+
+  const handleConfirmSchedule=async(scheduleId, staffName)=>{
+    setAllSchedules(prev=>prev.map(s=>s.id===scheduleId?{...s,confirmed:true}:s));
+    const sched=allSchedules.find(s=>s.id===scheduleId);
+    if(sched&&staffName){
+      const staffMember=staffList.find(s=>s.name===staffName);
+      if(staffMember){
+        const updatedShifts=[...(staffMember.confirmedShifts||[]),{...sched,confirmed:true}];
+        setStaffList(prev=>prev.map(s=>s.id===staffMember.id?{...s,confirmedShifts:updatedShifts}:s));
+        await saveDoc('staff', staffMember.id, { confirmedShifts: updatedShifts });
+      }
+    }
+  };
+
+  const handleAddClient=async()=>{
+    if(!newClient.name){alert("氏名は必須です");return;}
+    const newId=Date.now();
+    const client={...newClient,id:newId,age:Number(newClient.age),records:[],schedules:[]};
+    setClients(prev=>[...prev,client]);
+    await saveDoc('clients', newId, client);
+    setNewClient({name:"",age:"",address:"",diagnosis:"",emergency:"",life:"",notes:"",paymentMethod:""});
+    setShowAddClient(false);
+  };
+
+  const setNC=(k,v)=>setNewClient(f=>({...f,[k]:v}));
+  const roleLabel={admin:"管理者",staff:"スタッフ"};
+  const roleBadgeColor={admin:COLORS.purple,staff:COLORS.sageDark};
+
+  // CLIENT DETAIL VIEW
+  if(selected){
+    return(
+      <div style={S.app}>
+        <div style={S.header}>
+          <button onClick={()=>{setSelectedId(null);setClientTab("record");}} style={{background:"none",border:"none",color:"white",cursor:"pointer",fontSize:19}}>←</button>
+          <span style={S.headerTitle}>{selected.name} さん</span>
+          <span style={{fontSize:10,color:COLORS.sageLight}}>{selected.age}歳</span>
+        </div>
+        <div style={S.nav}>
+          {[["record","📝 記録"],["timer","⏱ タイマー"],["schedule","📅 予定"],["list","📋 一覧"],["assessment","🌿 アセスメント"],["family","👨‍👩‍👧 家族"]].map(([key,label])=>(
+            <button key={key} style={S.navBtn(clientTab===key)} onClick={()=>setClientTab(key)}>{label}</button>
+          ))}
+        </div>
+        <div style={{...S.main, ...(isPC&&clientTab==="assessment"?{maxWidth:1100}:{})}}>
+          {isPC&&clientTab!=="assessment"?(
+            <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:16,alignItems:"start"}}>
+              <div>
+                <div style={{...S.card,background:COLORS.sageDark,border:"none",marginBottom:12}}>
+                  <div style={{color:"white",fontSize:15,fontWeight:700,marginBottom:4}}>{selected.name} さん</div>
+                  <div style={{color:COLORS.sageLight,fontSize:12,marginBottom:8}}>{selected.age}歳　{selected.diagnosis}</div>
+                  <div style={{color:"rgba(255,255,255,0.8)",fontSize:11}}>{selected.address}</div>
+                  {selected.paymentMethod&&<div style={{marginTop:6,fontSize:11,color:COLORS.sageLight}}>{paymentLabel(selected.paymentMethod)}</div>}
+                </div>
+                <div style={{...S.card,padding:10}}>
+                  {[["record","📝 記録入力"],["timer","⏱ タイマー"],["schedule","📅 予定"],["list","📋 記録一覧"],["assessment","🌿 アセスメント"],["family","👨‍👩‍👧 家族共有"]].map(([key,label])=>(
+                    <button key={key} onClick={()=>setClientTab(key)} style={{display:"block",width:"100%",textAlign:"left",padding:"10px 12px",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:clientTab===key?700:400,background:clientTab===key?"#EBF4EE":"transparent",color:clientTab===key?COLORS.sageDark:COLORS.charcoal,marginBottom:2}}>{label}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                {clientTab==="record"&&<RecordForm client={selected} currentUser={currentUser} staffList={staffList} onSave={handleSaveRecord}/>}
+                {clientTab==="timer"&&<Timer clientName={selected.name}/>}
+                {clientTab==="schedule"&&<ClientScheduleView client={selected} allSchedules={allSchedules} currentUser={currentUser} onAddSchedule={d=>{setSchedDefaultDate(d);setShowSchedModal(true);}} onConfirmSchedule={(id)=>handleConfirmSchedule(id, allSchedules.find(s=>s.id===id)?.staff)}/>}
+                {clientTab==="list"&&<RecordList records={selected.records}/>}
+                {clientTab==="family"&&<FamilyPortal currentUser={{role:"family",clientId:selected.id}} clients={clients}/>}
+              </div>
+            </div>
+          ):(
+            <>
+              {clientTab==="record"&&<RecordForm client={selected} currentUser={currentUser} staffList={staffList} onSave={handleSaveRecord}/>}
+              {clientTab==="timer"&&<Timer clientName={selected.name}/>}
+              {clientTab==="schedule"&&<ClientScheduleView client={selected} allSchedules={allSchedules} currentUser={currentUser} onAddSchedule={d=>{setSchedDefaultDate(d);setShowSchedModal(true);}} onConfirmSchedule={(id)=>handleConfirmSchedule(id, allSchedules.find(s=>s.id===id)?.staff)}/>}
+              {clientTab==="list"&&<RecordList records={selected.records}/>}
+              {clientTab==="assessment"&&<AssessmentView client={selected} onUpdate={handleUpdateClient} isPC={isPC} currentUser={currentUser}/>}
+              {clientTab==="family"&&<FamilyPortal currentUser={{role:"family",clientId:selected.id}} clients={clients}/>}
+            </>
+          )}
+          {isPC&&clientTab==="assessment"&&<AssessmentView client={selected} onUpdate={handleUpdateClient} isPC={isPC} currentUser={currentUser}/>}
+        </div>
+        {showSchedModal&&<ScheduleModal clients={clients} defaultDate={schedDefaultDate} currentUser={currentUser} staffList={staffList} onSave={handleSaveSchedule} onClose={()=>setShowSchedModal(false)}/>}
+      </div>
+    );
+  }
+
+  // TOP LEVEL TABS
+  const topTabs=currentUser.role==="admin"
+    ?[["clients","👤 利用者"],["calendar","📅 カレンダー"],["staff","👥 スタッフ管理"],["myshift","📋 シフト希望"]]
+    :[["clients","👤 利用者"],["calendar","📅 カレンダー"],["myshift","📋 シフト希望"]];
+
+  return(
+    <div style={S.app}>
+      <div style={S.header}>
+        <span style={S.headerTitle}>🌱 暮らしのケア記録</span>
+        <div style={{display:"flex",alignItems:"center",gap:7}}>
+          <span style={{fontSize:10,color:"rgba(255,255,255,0.85)"}}>
+            <span style={{...S.badge(roleBadgeColor[currentUser.role]),marginRight:4}}>{roleLabel[currentUser.role]}</span>
+            {currentUser.name}
+          </span>
+          <button onClick={()=>setCurrentUser(null)} style={{background:"none",border:"1px solid rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.8)",cursor:"pointer",fontSize:10,borderRadius:6,padding:"2px 7px"}}>ログアウト</button>
+        </div>
+      </div>
+      <div style={S.nav}>
+        {topTabs.map(([k,l])=><button key={k} style={S.navBtn(topTab===k)} onClick={()=>setTopTab(k)}>{l}</button>)}
+      </div>
+
+      {topTab==="clients"&&(
+        <div style={S.main}>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:9}}>
+            {currentUser.role==="admin"&&<button style={{...S.btn("outline"),fontSize:11,padding:"5px 11px"}} onClick={()=>setShowAddClient(!showAddClient)}>{showAddClient?"閉じる":"+ 利用者追加"}</button>}
+            <button style={{...S.btn("blue"),fontSize:11,padding:"5px 11px"}} onClick={()=>{setSchedDefaultDate(null);setShowSchedModal(true);}}>+ 予定追加</button>
+          </div>
+          {showAddClient&&currentUser.role==="admin"&&(
+            <div style={S.card}>
+              <div style={S.title}>👤 新しい利用者を登録</div>
+              <div style={S.row}>
+                <div style={S.col}><label style={S.label}>氏名 *</label><input style={S.input} placeholder="山田 花子" value={newClient.name} onChange={e=>setNC("name",e.target.value)}/></div>
+                <div style={{width:66}}><label style={S.label}>年齢</label><input style={S.input} placeholder="82" value={newClient.age} onChange={e=>setNC("age",e.target.value)}/></div>
+              </div>
+              <div style={{marginBottom:8}}><label style={S.label}>住所</label><input style={S.input} value={newClient.address} onChange={e=>setNC("address",e.target.value)}/></div>
+              <div style={{marginBottom:8}}><label style={S.label}>既往歴・診断名</label><input style={S.input} value={newClient.diagnosis} onChange={e=>setNC("diagnosis",e.target.value)}/></div>
+              <div style={{marginBottom:8}}><label style={S.label}>緊急連絡先</label><input style={S.input} placeholder="山田 太郎（長男）090-〇〇〇〇" value={newClient.emergency} onChange={e=>setNC("emergency",e.target.value)}/></div>
+              <div style={{marginBottom:8}}>
+                <label style={S.label}>💳 支払い方法</label>
+                <PaymentSelector value={newClient.paymentMethod} onChange={v=>setNC("paymentMethod",v)} name="nc_pay"/>
+              </div>
+              <div style={{marginBottom:8}}><label style={S.label}>🌿 生きてきた過程・人となり</label><textarea style={S.textarea} placeholder="生まれや育ち、仕事、趣味、大切にしてきたこと、性格など..." value={newClient.life} onChange={e=>setNC("life",e.target.value)}/></div>
+              <div style={{marginBottom:12}}><label style={S.label}>関わる際のポイント・注意点</label><textarea style={{...S.textarea,minHeight:52}} placeholder="接し方のコツ、好きなこと、避けたほうがよいことなど..." value={newClient.notes} onChange={e=>setNC("notes",e.target.value)}/></div>
+              <button style={S.btn("primary")} onClick={handleAddClient}>登録する</button>
+            </div>
+          )}
+          <UpcomingWidget allSchedules={allSchedules}/>
+          {visibleClients.length===0?(
+            <div style={{...S.card,color:COLORS.muted,textAlign:"center",padding:24,fontSize:13}}>
+              {currentUser.role==="staff"?"担当利用者が設定されていません。\n管理者にご連絡ください。":"利用者が登録されていません"}
+            </div>
+          ):(
+            <>
+              <div style={{fontSize:11,color:COLORS.muted,marginBottom:8}}>
+                {currentUser.role==="staff"?"担当利用者一覧":"利用者一覧"} — タップして記録を開始
+              </div>
+              <div style={isPC?{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}:{}}>
+              {visibleClients.map(c=><ClientCard key={c.id} client={c} onClick={()=>setSelectedId(c.id)} isPC={isPC}/>)}
+            </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {topTab==="calendar"&&(
+        <div style={S.main}>
+          <CalendarView allSchedules={allSchedules} onDayClick={d=>{setSchedDefaultDate(d);setShowSchedModal(true);}}/>
+        </div>
+      )}
+
+      {topTab==="staff"&&currentUser.role==="admin"&&(
+        <StaffManagement staffList={staffList} setStaffList={setStaffList} clients={clients} allSchedules={allSchedules} onConfirmSchedule={handleConfirmSchedule}/>
+      )}
+
+      {topTab==="myshift"&&(
+        <ShiftRequestView currentUser={currentUser} staffList={staffList} setStaffList={setStaffList}/>
+      )}
+
+      {showSchedModal&&<ScheduleModal clients={visibleClients} defaultDate={schedDefaultDate} currentUser={currentUser} staffList={staffList} onSave={handleSaveSchedule} onClose={()=>setShowSchedModal(false)}/>}
+    </div>
+  );
+}
+
+
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+document.getElementById('loading').style.display = 'none';
+  </script>
+</body>
+</html>
